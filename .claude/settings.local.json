@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init *)",
+      "Bash(npm install *)",
+      "Bash(mkdir \"C:\\\\Users\\\\BMW Coder\\\\Documents\\\\projects\\\\issue-agent\\\\.claude\\\\docs\")",
+      "Bash(mkdir \"C:\\\\Users\\\\BMW Coder\\\\Documents\\\\projects\\\\issue-agent\\\\.husky\")",
+      "Bash(npx husky *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const a = require\\('@anthropic-ai/sdk'\\); console.log\\(Object.keys\\(a\\)\\)\")",
+      "Skill(commit-commands:commit-push-pr)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "Bash(git config *)",
+      "Bash(npx eslint *)"
+    ]
+  }
+}
