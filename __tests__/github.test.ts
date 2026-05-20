@@ -76,6 +76,167 @@ describe('getIssue', () => {
     const { getIssue } = await import('../src/github')
     await expect(getIssue('owner', 'repo', 999)).rejects.toThrow(/404|not found|issue/i)
   })
+
+  it('infers chore type from the chore label', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 10, title: 'Update deps', body: '', labels: [{ name: 'chore' }] },
+    })
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 10)
+    expect(issue.type).toBe('chore')
+  })
+
+  it('infers refactor type from the refactor label', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 11, title: 'Refactor auth', body: '', labels: [{ name: 'refactor' }] },
+    })
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 11)
+    expect(issue.type).toBe('refactor')
+  })
+
+  it('infers test type from the test label', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 12, title: 'Add coverage', body: '', labels: [{ name: 'test' }] },
+    })
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 12)
+    expect(issue.type).toBe('test')
+  })
+
+  it('defaults to feature type when no known label matches', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 13, title: 'Misc work', body: '', labels: [{ name: 'wontfix' }] },
+    })
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 13)
+    expect(issue.type).toBe('feature')
+  })
+})
+
+describe('createBranch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('creates a git ref with the full refs/heads/ path', async () => {
+    mockOctokit.rest.git.createRef.mockResolvedValue({ data: {} })
+
+    const { createBranch } = await import('../src/github')
+    await createBranch('owner', 'repo', 'feat/issue-42', 'deadbeef')
+
+    expect(mockOctokit.rest.git.createRef).toHaveBeenCalledWith({
+      owner: 'owner',
+      repo: 'repo',
+      ref: 'refs/heads/feat/issue-42',
+      sha: 'deadbeef',
+    })
+  })
+
+  it('throws a descriptive error when branch creation fails', async () => {
+    mockOctokit.rest.git.createRef.mockRejectedValue(new Error('Reference already exists'))
+
+    const { createBranch } = await import('../src/github')
+    await expect(createBranch('owner', 'repo', 'feat/issue-42', 'abc')).rejects.toThrow(
+      /failed to create branch/i
+    )
+  })
+})
+
+describe('getFileSha', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns the sha when the file exists on the given branch', async () => {
+    mockOctokit.rest.repos.getContent.mockResolvedValue({
+      data: { sha: 'file-sha-123', type: 'file', name: 'file.ts', path: 'src/file.ts' },
+    })
+
+    const { getFileSha } = await import('../src/github')
+    const sha = await getFileSha('owner', 'repo', 'src/file.ts', 'main')
+
+    expect(sha).toBe('file-sha-123')
+  })
+
+  it('returns null when the file does not exist (404)', async () => {
+    mockOctokit.rest.repos.getContent.mockRejectedValue(
+      Object.assign(new Error('Not Found'), { status: 404 })
+    )
+
+    const { getFileSha } = await import('../src/github')
+    const sha = await getFileSha('owner', 'repo', 'src/missing.ts', 'main')
+
+    expect(sha).toBeNull()
+  })
+
+  it('returns null when the path resolves to a directory', async () => {
+    mockOctokit.rest.repos.getContent.mockResolvedValue({ data: [] })
+
+    const { getFileSha } = await import('../src/github')
+    const sha = await getFileSha('owner', 'repo', 'src/', 'main')
+
+    expect(sha).toBeNull()
+  })
+
+  it('re-throws non-404 errors unchanged', async () => {
+    mockOctokit.rest.repos.getContent.mockRejectedValue(
+      Object.assign(new Error('Internal Server Error'), { status: 500 })
+    )
+
+    const { getFileSha } = await import('../src/github')
+    await expect(getFileSha('owner', 'repo', 'src/file.ts', 'main')).rejects.toThrow(
+      'Internal Server Error'
+    )
+  })
+})
+
+describe('upsertFile', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('base64-encodes content and sends to createOrUpdateFileContents', async () => {
+    mockOctokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({ data: {} })
+
+    const { upsertFile } = await import('../src/github')
+    await upsertFile('owner', 'repo', 'src/chart.ts', 'export const x = 1', 'add chart', 'main')
+
+    expect(mockOctokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'owner',
+        repo: 'repo',
+        path: 'src/chart.ts',
+        message: 'add chart',
+        branch: 'main',
+        content: Buffer.from('export const x = 1').toString('base64'),
+      })
+    )
+  })
+
+  it('includes the sha field when updating an existing file', async () => {
+    mockOctokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({ data: {} })
+
+    const { upsertFile } = await import('../src/github')
+    await upsertFile('owner', 'repo', 'src/chart.ts', 'content', 'update', 'main', 'existing-sha')
+
+    expect(mockOctokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledWith(
+      expect.objectContaining({ sha: 'existing-sha' })
+    )
+  })
+
+  it('omits the sha field when creating a new file', async () => {
+    mockOctokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({ data: {} })
+
+    const { upsertFile } = await import('../src/github')
+    await upsertFile('owner', 'repo', 'src/new.ts', 'content', 'create', 'main')
+
+    const call = mockOctokit.rest.repos.createOrUpdateFileContents.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(call).not.toHaveProperty('sha')
+  })
 })
 
 describe('createPR', () => {

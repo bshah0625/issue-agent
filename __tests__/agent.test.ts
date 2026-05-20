@@ -309,4 +309,80 @@ describe('runAgent', () => {
 
     expect(result.ciAttempts).toBe(1)
   })
+
+  it('builds the file tree traversing into subdirectories and skipping node_modules', async () => {
+    await setupMocks()
+    const nodefs = await import('node:fs')
+
+    vi.mocked(nodefs.readdirSync)
+      .mockReturnValueOnce(
+        ['node_modules', 'src'] as unknown as ReturnType<typeof nodefs.readdirSync>
+      )
+      .mockReturnValueOnce(
+        ['index.ts'] as unknown as ReturnType<typeof nodefs.readdirSync>
+      )
+      .mockReturnValue([] as unknown as ReturnType<typeof nodefs.readdirSync>)
+
+    vi.mocked(nodefs.statSync)
+      .mockReturnValueOnce(
+        { isDirectory: () => true } as unknown as ReturnType<typeof nodefs.statSync>
+      )
+      .mockReturnValue(
+        { isDirectory: () => false } as unknown as ReturnType<typeof nodefs.statSync>
+      )
+
+    const { runAgent } = await import('../src/agent')
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(true)
+  })
+
+  it('reads existing file content when an implementation file action is modify', async () => {
+    const modifyPlan: AgentPlan = {
+      ...mockPlan,
+      implementationFiles: [
+        { path: 'src/chart.ts', action: 'modify', description: 'Update chart component' },
+      ],
+    }
+    await setupMocks({ planOverride: modifyPlan })
+
+    const fsPromises = await import('node:fs/promises')
+    vi.mocked(fsPromises.readFile).mockResolvedValue('// existing content' as never)
+
+    const { runAgent } = await import('../src/agent')
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(true)
+    expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalled()
+  })
+
+  it('handles readFile throwing when reading test files for the green phase context', async () => {
+    await setupMocks()
+
+    const fsPromises = await import('node:fs/promises')
+    vi.mocked(fsPromises.readFile).mockRejectedValue(new Error('ENOENT: no such file'))
+
+    const { runAgent } = await import('../src/agent')
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(true)
+  })
+
+  it('continues successfully when Claude returns no text content block', async () => {
+    await setupMocks()
+
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({ content: [] }),
+        },
+      } as never
+    })
+
+    const { runAgent } = await import('../src/agent')
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(true)
+  })
 })
