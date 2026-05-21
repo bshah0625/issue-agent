@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   typecheck:
@@ -44,11 +44,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - run: npx vitest run --shard=${{ matrix.shard }}/2 --coverage
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage-shard-${{ matrix.shard }}
-          path: coverage/
+      - run: npx vitest run --shard=${{ matrix.shard }}/2
 
   coverage:
     name: Coverage Gate
@@ -61,9 +57,4 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-shard-*
-          merge-multiple: true
-          path: coverage/
-      - run: npx vitest run --coverage --coverage.thresholds.lines=80
+      - run: npm run test:coverage
