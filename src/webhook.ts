@@ -75,13 +75,27 @@ export async function handleWebhook(req: IncomingMessage, res: ServerResponse): 
     return jsonResponse(res, 200, { status: 'ignored' })
   }
 
+  if (inFlight.has(issueNumber)) {
+    log(`Issue #${issueNumber} already in progress — ignoring duplicate event`)
+    return jsonResponse(res, 200, { status: 'in progress' })
+  }
+
+  inFlight.add(issueNumber)
   // Fire and forget — 202 must be sent before agent begins work
-  void runAgent(issueNumber, projectConfig).catch((err: unknown) => {
-    logError(`Agent error for issue #${issueNumber}: ${String(err)}`)
-  })
+  void runAgent(issueNumber, projectConfig)
+    .catch((err: unknown) => {
+      logError(`Agent error for issue #${issueNumber}: ${String(err)}`)
+    })
+    .finally(() => {
+      inFlight.delete(issueNumber)
+    })
 
   return jsonResponse(res, 202, { status: 'accepted' })
 }
+
+const inFlight = new Set<number>()
+
+export { inFlight }
 
 export const server = createServer(handleWebhook)
 
