@@ -2,12 +2,17 @@ import { simpleGit } from 'simple-git'
 import { existsSync } from 'node:fs'
 
 export async function cloneOrPull(repoUrl: string, localPath: string): Promise<void> {
-  if (existsSync(localPath)) {
-    const git = simpleGit(localPath)
-    await git.pull()
-  } else {
-    const git = simpleGit()
-    await git.clone(repoUrl, localPath)
+  try {
+    if (existsSync(localPath)) {
+      const git = simpleGit(localPath)
+      await git.pull()
+    } else {
+      const git = simpleGit()
+      await git.clone(repoUrl, localPath)
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to clone or pull '${repoUrl}': ${message}`)
   }
 }
 

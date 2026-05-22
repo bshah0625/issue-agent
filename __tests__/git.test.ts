@@ -52,6 +52,36 @@ describe('cloneOrPull', () => {
     )
     expect(mockGitInstance.pull).not.toHaveBeenCalled()
   })
+
+  it('throws a descriptive error including "pull" when pull fails', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockGitInstance.pull.mockRejectedValue(new Error('Could not resolve host: github.com'))
+
+    const { cloneOrPull } = await import('../src/git')
+    await expect(
+      cloneOrPull('https://github.com/owner/repo.git', '/tmp/test-repo')
+    ).rejects.toThrow(/Failed to (clone|pull)/i)
+  })
+
+  it('throws a descriptive error including "clone" when clone fails', async () => {
+    mockExistsSync.mockReturnValue(false)
+    mockGitInstance.clone.mockRejectedValue(new Error('Repository not found'))
+
+    const { cloneOrPull } = await import('../src/git')
+    await expect(cloneOrPull('https://github.com/owner/repo.git', '/tmp/new-repo')).rejects.toThrow(
+      /Failed to (clone|pull)/i
+    )
+  })
+
+  it('falls back to String(err) when a non-Error value is thrown during clone', async () => {
+    mockExistsSync.mockReturnValue(false)
+    mockGitInstance.clone.mockRejectedValue('authentication failed')
+
+    const { cloneOrPull } = await import('../src/git')
+    await expect(cloneOrPull('https://github.com/owner/repo.git', '/tmp/new-repo')).rejects.toThrow(
+      /Failed to (clone|pull).*authentication failed/i
+    )
+  })
 })
 
 describe('createAndCheckoutBranch', () => {
