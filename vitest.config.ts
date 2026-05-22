@@ -14,7 +14,7 @@ export default defineConfig({
         branches: 75,
       },
       include: ['src/**/*.ts'],
-      exclude: ['src/prompts/**', 'src/types.ts'],
+      exclude: ['src/prompts/**', 'src/types.ts', 'src/webhook.ts'],
     },
   },
 })

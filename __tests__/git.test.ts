@@ -16,6 +16,43 @@ vi.mock('simple-git', () => ({
   simpleGit: vi.fn(() => mockGitInstance),
 }))
 
+const mockExistsSync = vi.fn()
+
+vi.mock('node:fs', () => ({
+  existsSync: mockExistsSync,
+}))
+
+describe('cloneOrPull', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('pulls when the local repo directory already exists', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockGitInstance.pull.mockResolvedValue(undefined)
+
+    const { cloneOrPull } = await import('../src/git')
+    await cloneOrPull('https://github.com/owner/repo.git', '/tmp/test-repo')
+
+    expect(mockGitInstance.pull).toHaveBeenCalled()
+    expect(mockGitInstance.clone).not.toHaveBeenCalled()
+  })
+
+  it('clones when the local path does not exist yet', async () => {
+    mockExistsSync.mockReturnValue(false)
+    mockGitInstance.clone.mockResolvedValue(undefined)
+
+    const { cloneOrPull } = await import('../src/git')
+    await cloneOrPull('https://github.com/owner/repo.git', '/tmp/new-repo')
+
+    expect(mockGitInstance.clone).toHaveBeenCalledWith(
+      'https://github.com/owner/repo.git',
+      '/tmp/new-repo'
+    )
+    expect(mockGitInstance.pull).not.toHaveBeenCalled()
+  })
+})
+
 describe('createAndCheckoutBranch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -97,5 +134,21 @@ describe('push', () => {
       'feat/issue-42-add-chart',
       expect.arrayContaining(['--set-upstream'])
     )
+  })
+})
+
+describe('getHeadSha', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns the current HEAD commit SHA', async () => {
+    mockGitInstance.revparse.mockResolvedValue('deadbeef1234567890abcdef')
+
+    const { getHeadSha } = await import('../src/git')
+    const sha = await getHeadSha('/tmp/test-repo')
+
+    expect(sha).toBe('deadbeef1234567890abcdef')
+    expect(mockGitInstance.revparse).toHaveBeenCalledWith(['HEAD'])
   })
 })
