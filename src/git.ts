@@ -45,8 +45,13 @@ export async function commit(localPath: string, message: string): Promise<void> 
 }
 
 export async function push(localPath: string, branchName: string): Promise<void> {
-  const git = simpleGit(localPath)
-  await git.push('origin', branchName, ['--set-upstream'])
+  try {
+    const git = simpleGit(localPath)
+    await git.push('origin', branchName, ['--set-upstream'])
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to push branch '${branchName}': ${message}`)
+  }
 }
 
 export async function getHeadSha(localPath: string): Promise<string> {
