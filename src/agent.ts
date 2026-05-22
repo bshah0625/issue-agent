@@ -3,7 +3,7 @@ import { writeFile, readFile, mkdir } from 'node:fs/promises'
 import { readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { getIssue, createPR, addLabel, postComment } from './github.js'
-import { createAndCheckoutBranch, stageAll, commit, push } from './git.js'
+import { checkoutAndPull, createAndCheckoutBranch, stageAll, commit, push } from './git.js'
 import { runCI, runAllChecks } from './ci.js'
 import { planFromIssue } from './planner.js'
 import { log } from './logger.js'
@@ -106,6 +106,9 @@ export async function runAgent(issueNumber: number, config: ProjectConfig): Prom
   log(`[#${issueNumber}] Planning with Claude`)
   const plan = await planFromIssue(issue, fileTree, config)
   log(`[#${issueNumber}] Plan: ${plan.summary} — branch: ${plan.branchName}`)
+
+  log(`[#${issueNumber}] Syncing ${config.baseBranch} before branching`)
+  await checkoutAndPull(config.localPath, config.baseBranch)
 
   log(`[#${issueNumber}] Creating branch ${plan.branchName}`)
   await createAndCheckoutBranch(config.localPath, plan.branchName)

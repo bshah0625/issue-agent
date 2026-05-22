@@ -34,18 +34,30 @@ Thin Octokit wrapper. All functions throw descriptive errors on failure.
 
 ---
 
+## src/logger.ts
+
+Shared structured logger. All `src/` files use these instead of `console.log`.
+
+| Function            | Output                | Notes                |
+| ------------------- | --------------------- | -------------------- |
+| `log(message)`      | stdout with timestamp | ISO timestamp prefix |
+| `logError(message)` | stderr with timestamp | Prefixes `[ERROR]`   |
+
+---
+
 ## src/git.ts
 
 simple-git wrapper. All functions take `localPath` as first argument.
 
-| Function                                         | Returns           | Notes                        |
-| ------------------------------------------------ | ----------------- | ---------------------------- |
-| `cloneOrPull(repoUrl, localPath)`                | `Promise<void>`   | Pull if exists, clone if not |
-| `createAndCheckoutBranch(localPath, branchName)` | `Promise<void>`   | From current HEAD            |
-| `stageAll(localPath)`                            | `Promise<void>`   | git add -A                   |
-| `commit(localPath, message)`                     | `Promise<void>`   | Throws if nothing staged     |
-| `push(localPath, branchName)`                    | `Promise<void>`   | Sets upstream                |
-| `getHeadSha(localPath)`                          | `Promise<string>` | Returns HEAD SHA             |
+| Function                                         | Returns           | Notes                           |
+| ------------------------------------------------ | ----------------- | ------------------------------- |
+| `cloneOrPull(repoUrl, localPath)`                | `Promise<void>`   | Pull if exists, clone if not    |
+| `checkoutAndPull(localPath, branch)`             | `Promise<void>`   | Checkout branch and pull latest |
+| `createAndCheckoutBranch(localPath, branchName)` | `Promise<void>`   | From current HEAD               |
+| `stageAll(localPath)`                            | `Promise<void>`   | git add -A                      |
+| `commit(localPath, message)`                     | `Promise<void>`   | Throws if nothing staged        |
+| `push(localPath, branchName)`                    | `Promise<void>`   | Sets upstream                   |
+| `getHeadSha(localPath)`                          | `Promise<string>` | Returns HEAD SHA                |
 
 ---
 
@@ -84,7 +96,7 @@ Full pipeline orchestrator.
 | ------------------------------- | ---------------------- | ----------------- |
 | `runAgent(issueNumber, config)` | `Promise<AgentResult>` | Full TDD pipeline |
 
-Execution order: getIssue → planFromIssue → createBranch → TDD red → TDD green → CI loop → push → createPR
+Execution order: getIssue → planFromIssue → checkoutAndPull → createAndCheckoutBranch → TDD red → TDD green → CI loop → push → createPR
 
 ---
 
@@ -92,9 +104,28 @@ Execution order: getIssue → planFromIssue → createBranch → TDD red → TDD
 
 HTTP server using Node's built-in `http` module.
 
-- `POST /webhook` — validates HMAC-SHA256, routes `issues.labeled` events
-- Returns 202 before firing `runAgent()` (non-blocking)
-- Uses `crypto.timingSafeEqual` for HMAC comparison
+| Export                    | Type            | Notes                                          |
+| ------------------------- | --------------- | ---------------------------------------------- |
+| `handleWebhook(req, res)` | `Promise<void>` | Validates HMAC, routes `issues.labeled` events |
+| `startServer(port)`       | `void`          | Binds HTTP server; validates required env vars |
+| `server`                  | `http.Server`   | Underlying server instance                     |
+| `inFlight`                | `Set<number>`   | Issue numbers currently being processed        |
+
+- Returns 202 before firing `runAgent()` (non-blocking, fire-and-forget)
+- Uses `crypto.timingSafeEqual` for timing-safe HMAC comparison
+- Deduplicates concurrent events for the same issue number via `inFlight` Set
+
+---
+
+## src/cli.ts
+
+Manual trigger CLI — runs the agent directly without a webhook.
+
+| Export         | Signature       | Notes                              |
+| -------------- | --------------- | ---------------------------------- |
+| `runCLI(args)` | `Promise<void>` | Args: `[projectName, issueNumber]` |
+
+Usage: `npx tsx src/cli.ts <project-name> <issue-number>`
 
 ---
 

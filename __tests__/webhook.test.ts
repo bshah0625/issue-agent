@@ -2,14 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 
 vi.mock('../src/agent.js', () => ({
-  runAgent: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      prUrl: 'https://github.com/pr/1',
-      branchName: 'feat/1',
-      ciAttempts: 0,
-    }),
+  runAgent: vi.fn().mockResolvedValue({
+    success: true,
+    prUrl: 'https://github.com/pr/1',
+    branchName: 'feat/1',
+    ciAttempts: 0,
+  }),
 }))
 
 vi.mock('../config/projects.js', () => ({
@@ -203,5 +201,47 @@ describe('handleWebhook', () => {
 
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.any(Object))
     expect(res.end).toHaveBeenCalledWith(expect.stringContaining('ignored'))
+  })
+
+  it('returns 202 and does not call runAgent again for a duplicate in-flight event', async () => {
+    const { runAgent } = await import('../src/agent.js')
+    let resolveAgent!: () => void
+    vi.mocked(runAgent).mockReturnValue(
+      new Promise<never>((resolve) => {
+        resolveAgent = resolve as () => void
+      })
+    )
+
+    const body = JSON.stringify({
+      action: 'labeled',
+      repository: { name: 'test-repo' },
+      label: { name: 'agent-ready' },
+      issue: { number: 99 },
+    })
+    const sig = makeSignature('test-secret', body)
+    const { handleWebhook } = await import('../src/webhook')
+
+    const req1 = makeReq({
+      headers: { 'x-hub-signature-256': sig, 'x-github-event': 'issues' },
+      body,
+    })
+    const req2 = makeReq({
+      headers: { 'x-hub-signature-256': sig, 'x-github-event': 'issues' },
+      body,
+    })
+    const res1 = makeRes()
+    const res2 = makeRes()
+
+    // Fire first request — agent is now in-flight
+    await handleWebhook(req1 as never, res1 as never)
+    // Fire duplicate before agent completes
+    await handleWebhook(req2 as never, res2 as never)
+
+    expect(res1.writeHead).toHaveBeenCalledWith(202, expect.any(Object))
+    expect(res2.writeHead).toHaveBeenCalledWith(200, expect.any(Object))
+    expect(res2.end).toHaveBeenCalledWith(expect.stringContaining('in progress'))
+    expect(runAgent).toHaveBeenCalledTimes(1)
+
+    resolveAgent()
   })
 })
