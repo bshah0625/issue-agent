@@ -41,12 +41,19 @@ export async function planFromIssue(
     `\nProject file tree:\n${fileTree}`,
   ].join('\n')
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 2048,
-    system: PLAN_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
-  })
+  let response: Awaited<ReturnType<typeof client.messages.create>>
+  try {
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2048,
+      system: PLAN_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+  } catch (err) {
+    throw new Error(
+      `Failed to generate plan via Claude API: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
 
   let rawText = ''
   for (const block of response.content) {
