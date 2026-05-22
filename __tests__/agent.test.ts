@@ -15,6 +15,7 @@ vi.mock('../src/github', () => ({
 vi.mock('../src/git', () => ({
   cloneOrPull: vi.fn(),
   createAndCheckoutBranch: vi.fn(),
+  checkoutAndPull: vi.fn(),
   stageAll: vi.fn(),
   commit: vi.fn(),
   push: vi.fn(),
@@ -85,10 +86,12 @@ const failingCIResults: CIResult[] = [
   { passed: false, output: 'test failed', stage: 'test', failureReason: 'test failed' },
 ]
 
-async function setupMocks(overrides: {
-  ciResults?: CIResult[][]
-  planOverride?: AgentPlan
-} = {}): Promise<void> {
+async function setupMocks(
+  overrides: {
+    ciResults?: CIResult[][]
+    planOverride?: AgentPlan
+  } = {}
+): Promise<void> {
   const github = await import('../src/github')
   const git = await import('../src/git')
   const ci = await import('../src/ci')
@@ -100,6 +103,7 @@ async function setupMocks(overrides: {
   vi.mocked(github.addLabel).mockResolvedValue(undefined)
   vi.mocked(github.postComment).mockResolvedValue(undefined)
   vi.mocked(git.createAndCheckoutBranch).mockResolvedValue(undefined)
+  vi.mocked(git.checkoutAndPull).mockResolvedValue(undefined)
   vi.mocked(git.stageAll).mockResolvedValue(undefined)
   vi.mocked(git.commit).mockResolvedValue(undefined)
   vi.mocked(git.push).mockResolvedValue(undefined)
@@ -139,7 +143,9 @@ describe('runAgent', () => {
 
     const commitCalls = vi.mocked(git.commit).mock.calls
     const testCommitIndex = commitCalls.findIndex(([, msg]) => msg?.includes('test('))
-    const implCommitIndex = commitCalls.findIndex(([, msg]) => msg?.includes('feat(') || msg?.includes('fix('))
+    const implCommitIndex = commitCalls.findIndex(
+      ([, msg]) => msg?.includes('feat(') || msg?.includes('fix(')
+    )
 
     expect(testCommitIndex).toBeGreaterThanOrEqual(0)
     expect(implCommitIndex).toBeGreaterThan(testCommitIndex)
@@ -173,11 +179,7 @@ describe('runAgent', () => {
 
   it('retries CI up to maxCIAttempts times on failure', async () => {
     await setupMocks({
-      ciResults: [
-        failingCIResults,
-        failingCIResults,
-        failingCIResults,
-      ],
+      ciResults: [failingCIResults, failingCIResults, failingCIResults],
     })
 
     const { runAgent } = await import('../src/agent')
@@ -267,10 +269,7 @@ describe('runAgent', () => {
 
     await runAgent(42, mockConfig)
 
-    expect(vi.mocked(git.push)).toHaveBeenCalledWith(
-      mockConfig.localPath,
-      mockPlan.branchName
-    )
+    expect(vi.mocked(git.push)).toHaveBeenCalledWith(mockConfig.localPath, mockPlan.branchName)
   })
 
   it('returns success: true with a prUrl on a fully passing run', async () => {
@@ -315,21 +314,19 @@ describe('runAgent', () => {
     const nodefs = await import('node:fs')
 
     vi.mocked(nodefs.readdirSync)
-      .mockReturnValueOnce(
-        ['node_modules', 'src'] as unknown as ReturnType<typeof nodefs.readdirSync>
-      )
-      .mockReturnValueOnce(
-        ['index.ts'] as unknown as ReturnType<typeof nodefs.readdirSync>
-      )
+      .mockReturnValueOnce(['node_modules', 'src'] as unknown as ReturnType<
+        typeof nodefs.readdirSync
+      >)
+      .mockReturnValueOnce(['index.ts'] as unknown as ReturnType<typeof nodefs.readdirSync>)
       .mockReturnValue([] as unknown as ReturnType<typeof nodefs.readdirSync>)
 
     vi.mocked(nodefs.statSync)
-      .mockReturnValueOnce(
-        { isDirectory: () => true } as unknown as ReturnType<typeof nodefs.statSync>
-      )
-      .mockReturnValue(
-        { isDirectory: () => false } as unknown as ReturnType<typeof nodefs.statSync>
-      )
+      .mockReturnValueOnce({ isDirectory: () => true } as unknown as ReturnType<
+        typeof nodefs.statSync
+      >)
+      .mockReturnValue({ isDirectory: () => false } as unknown as ReturnType<
+        typeof nodefs.statSync
+      >)
 
     const { runAgent } = await import('../src/agent')
     const result = await runAgent(42, mockConfig)
@@ -366,6 +363,23 @@ describe('runAgent', () => {
     const result = await runAgent(42, mockConfig)
 
     expect(result.success).toBe(true)
+  })
+
+  it('syncs the base branch before creating the feature branch', async () => {
+    await setupMocks()
+    const git = await import('../src/git')
+    const { runAgent } = await import('../src/agent')
+
+    await runAgent(42, mockConfig)
+
+    expect(vi.mocked(git.checkoutAndPull)).toHaveBeenCalledWith(
+      mockConfig.localPath,
+      mockConfig.baseBranch
+    )
+    // checkoutAndPull must happen before createAndCheckoutBranch
+    const pullOrder = vi.mocked(git.checkoutAndPull).mock.invocationCallOrder[0]!
+    const branchOrder = vi.mocked(git.createAndCheckoutBranch).mock.invocationCallOrder[0]!
+    expect(pullOrder).toBeLessThan(branchOrder)
   })
 
   it('continues successfully when Claude returns no text content block', async () => {
