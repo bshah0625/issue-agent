@@ -436,4 +436,24 @@ describe('runAgent', () => {
 
     expect(result.success).toBe(true)
   })
+
+  it('continues successfully when Claude returns only non-text block types', async () => {
+    await setupMocks()
+
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [{ type: 'tool_use', id: 'x', name: 'f', input: {} }],
+          }),
+        },
+      } as never
+    })
+
+    const { runAgent } = await import('../src/agent')
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(true)
+  })
 })
