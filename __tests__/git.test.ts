@@ -182,6 +182,24 @@ describe('push', () => {
       expect.arrayContaining(['--set-upstream'])
     )
   })
+
+  it('throws a descriptive error when push is rejected', async () => {
+    mockGitInstance.push.mockRejectedValue(new Error('remote: Permission to repo denied'))
+
+    const { push } = await import('../src/git')
+    await expect(push('/tmp/test-repo', 'feat/issue-42-add-chart')).rejects.toThrow(
+      /Failed to push/i
+    )
+  })
+
+  it('falls back to String(err) when a non-Error value is thrown', async () => {
+    mockGitInstance.push.mockRejectedValue('network timeout')
+
+    const { push } = await import('../src/git')
+    await expect(push('/tmp/test-repo', 'feat/issue-42')).rejects.toThrow(
+      /Failed to push.*network timeout/i
+    )
+  })
 })
 
 describe('getHeadSha', () => {
