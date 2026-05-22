@@ -152,3 +152,28 @@ describe('getHeadSha', () => {
     expect(mockGitInstance.revparse).toHaveBeenCalledWith(['HEAD'])
   })
 })
+
+describe('checkoutAndPull', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('checks out the branch then pulls latest changes', async () => {
+    mockGitInstance.status.mockResolvedValue({ current: 'main' })
+    mockGitInstance.pull.mockResolvedValue(undefined)
+
+    const { checkoutAndPull } = await import('../src/git')
+    await checkoutAndPull('/tmp/test-repo', 'main')
+
+    expect(mockGitInstance.pull).toHaveBeenCalled()
+  })
+
+  it('throws a descriptive error when the branch does not exist', async () => {
+    mockGitInstance.status.mockRejectedValue(new Error("pathspec 'nonexistent' did not match"))
+
+    const { checkoutAndPull } = await import('../src/git')
+    await expect(checkoutAndPull('/tmp/test-repo', 'nonexistent')).rejects.toThrow(
+      /branch|checkout|pull/i
+    )
+  })
+})
