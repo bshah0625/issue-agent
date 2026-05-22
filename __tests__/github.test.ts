@@ -68,6 +68,37 @@ describe('getIssue', () => {
     expect(typeof issue.labels[0]).toBe('string')
   })
 
+  it('filters out label objects with no name field', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 3, title: 'Test', body: '', labels: [{ name: 'bug' }, {}] },
+    })
+
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 3)
+
+    expect(issue.labels).toEqual(['bug'])
+  })
+
+  it('handles labels that are already plain strings rather than objects', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 2, title: 'Test', body: '', labels: ['bug', 'enhancement'] },
+    })
+
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 2)
+
+    expect(issue.labels).toEqual(['bug', 'enhancement'])
+  })
+
+  it('includes the error message for non-404 failures', async () => {
+    mockOctokit.rest.issues.get.mockRejectedValue(
+      Object.assign(new Error('Service Unavailable'), { status: 503 })
+    )
+
+    const { getIssue } = await import('../src/github')
+    await expect(getIssue('owner', 'repo', 1)).rejects.toThrow('Service Unavailable')
+  })
+
   it('coerces a null body to an empty string', async () => {
     mockOctokit.rest.issues.get.mockResolvedValue({
       data: { number: 5, title: 'No description', body: null, labels: [] },
@@ -278,6 +309,15 @@ describe('createPR', () => {
     const { createPR } = await import('../src/github')
     await expect(createPR('owner', 'repo', 'title', 'body', 'head', 'base')).rejects.toThrow(
       /422|unprocessable|pull request/i
+    )
+  })
+
+  it('includes only the message when status is undefined in the error', async () => {
+    mockOctokit.rest.pulls.create.mockRejectedValue(new Error('Network error'))
+
+    const { createPR } = await import('../src/github')
+    await expect(createPR('owner', 'repo', 'title', 'body', 'head', 'base')).rejects.toThrow(
+      /Network error|pull request/i
     )
   })
 })

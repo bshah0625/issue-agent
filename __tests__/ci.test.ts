@@ -79,6 +79,19 @@ describe('runCI', () => {
     expect(testResult.stage).toBe('test')
   })
 
+  it('treats missing stdout and stderr as empty strings', async () => {
+    const { execSync } = await import('child_process')
+    vi.mocked(execSync).mockImplementation(() => {
+      throw new Error('spawn ENOENT')
+    })
+
+    const { runCI } = await import('../src/ci')
+    const result = runCI('/tmp/test-repo', 'missing-cmd', 'typecheck')
+
+    expect(result.passed).toBe(false)
+    expect(result.output).toBe('')
+  })
+
   it('includes the first 500 chars of output in failureReason on failure', async () => {
     const { execSync } = await import('child_process')
     const longOutput = 'x'.repeat(1000)

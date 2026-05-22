@@ -382,6 +382,43 @@ describe('runAgent', () => {
     expect(pullOrder).toBeLessThan(branchOrder)
   })
 
+  it('uses fix/ commit prefix when the issue type is bug', async () => {
+    const bugIssue: Issue = { ...mockIssue, type: 'bug', labels: ['bug'] }
+    const bugPlan: AgentPlan = {
+      ...mockPlan,
+      issue: bugIssue,
+      branchName: 'fix/issue-42-add-mpg-chart',
+    }
+    await setupMocks({ planOverride: bugPlan })
+    const github = await import('../src/github')
+    vi.mocked(github.getIssue).mockResolvedValue(bugIssue)
+    const git = await import('../src/git')
+    const { runAgent } = await import('../src/agent')
+
+    await runAgent(42, mockConfig)
+
+    const commitCalls = vi.mocked(git.commit).mock.calls
+    const implCommit = commitCalls.find(([, msg]) => msg?.startsWith('fix('))
+    expect(implCommit).toBeDefined()
+  })
+
+  it('uses Unknown fallbacks when no CI result is found after loop exits', async () => {
+    // runAllChecks returns an empty array — no results, allCIPassed([]) = false
+    await setupMocks({ ciResults: [[]] })
+    const github = await import('../src/github')
+    const { runAgent } = await import('../src/agent')
+
+    const result = await runAgent(42, mockConfig)
+
+    expect(result.success).toBe(false)
+    expect(vi.mocked(github.postComment)).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      expect.stringContaining('Agent blocked')
+    )
+  })
+
   it('continues successfully when Claude returns no text content block', async () => {
     await setupMocks()
 

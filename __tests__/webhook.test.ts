@@ -203,6 +203,33 @@ describe('handleWebhook', () => {
     expect(res.end).toHaveBeenCalledWith(expect.stringContaining('ignored'))
   })
 
+  it('logs an error but keeps running when runAgent rejects after 202 is sent', async () => {
+    const { runAgent } = await import('../src/agent.js')
+    vi.mocked(runAgent).mockRejectedValue(new Error('out of memory'))
+
+    const body = JSON.stringify({
+      action: 'labeled',
+      repository: { name: 'test-repo' },
+      label: { name: 'agent-ready' },
+      issue: { number: 77 },
+    })
+    const sig = makeSignature('test-secret', body)
+    const { handleWebhook } = await import('../src/webhook')
+    const req = makeReq({
+      headers: { 'x-hub-signature-256': sig, 'x-github-event': 'issues' },
+      body,
+    })
+    const res = makeRes()
+
+    await handleWebhook(req as never, res as never)
+
+    // 202 must still be returned synchronously before the agent runs
+    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object))
+
+    // Let the microtask queue drain so the rejected promise catch handler fires
+    await new Promise((r) => setTimeout(r, 0))
+  })
+
   it('returns 202 and does not call runAgent again for a duplicate in-flight event', async () => {
     const { runAgent } = await import('../src/agent.js')
     let resolveAgent!: () => void

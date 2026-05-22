@@ -77,6 +77,15 @@ describe('createAndCheckoutBranch', () => {
       createAndCheckoutBranch('/tmp/test-repo', 'feat/issue-42-add-chart')
     ).rejects.toThrow(/branch|already exists/i)
   })
+
+  it('falls back to String(err) when a non-Error value is thrown', async () => {
+    mockGitInstance.checkoutLocalBranch.mockRejectedValue('fatal: not a git repo')
+
+    const { createAndCheckoutBranch } = await import('../src/git')
+    await expect(createAndCheckoutBranch('/tmp/test-repo', 'feat/issue-1')).rejects.toThrow(
+      'fatal: not a git repo'
+    )
+  })
 })
 
 describe('stageAll', () => {
@@ -115,6 +124,13 @@ describe('commit', () => {
     await expect(commit('/tmp/test-repo', 'empty commit')).rejects.toThrow(
       /nothing to commit|staged/i
     )
+  })
+
+  it('falls back to String(err) when a non-Error value is thrown', async () => {
+    mockGitInstance.commit.mockRejectedValue('EACCES: permission denied')
+
+    const { commit } = await import('../src/git')
+    await expect(commit('/tmp/test-repo', 'msg')).rejects.toThrow('EACCES: permission denied')
   })
 })
 
@@ -175,5 +191,12 @@ describe('checkoutAndPull', () => {
     await expect(checkoutAndPull('/tmp/test-repo', 'nonexistent')).rejects.toThrow(
       /branch|checkout|pull/i
     )
+  })
+
+  it('falls back to String(err) when a non-Error value is thrown', async () => {
+    mockGitInstance.status.mockRejectedValue('network timeout')
+
+    const { checkoutAndPull } = await import('../src/git')
+    await expect(checkoutAndPull('/tmp/test-repo', 'main')).rejects.toThrow('network timeout')
   })
 })
