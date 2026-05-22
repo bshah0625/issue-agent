@@ -33,12 +33,17 @@ function buildFileTree(localPath: string, base = ''): string {
 
 async function callClaude(systemPrompt: string, userMessage: string): Promise<string> {
   const client = new Anthropic()
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  })
+  let response: Awaited<ReturnType<typeof client.messages.create>>
+  try {
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+  } catch (err) {
+    throw new Error(`Claude API call failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
   for (const block of response.content) {
     if (block.type === 'text') return block.text
   }
@@ -224,8 +229,11 @@ export async function runAgent(issueNumber: number, config: ProjectConfig): Prom
   // Step 8: Push
   await push(config.localPath, plan.branchName)
 
-  // Step 9: Generate PR body
-  const prBody = await generatePRBody(issue, plan)
+  // Step 9: Generate PR body — enforce Closes #N so the issue auto-closes on merge
+  let prBody = await generatePRBody(issue, plan)
+  if (!prBody.includes(`Closes #${issueNumber}`)) {
+    prBody = `${prBody}\n\nCloses #${issueNumber}`
+  }
 
   // Step 10: Create PR
   const prTitle = `${commitPrefix}(#${issueNumber}): ${plan.summary}`
