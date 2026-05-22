@@ -26,7 +26,7 @@ export interface CIResult {
   passed: boolean
   output: string
   failureReason?: string
-  stage: 'typecheck' | 'lint' | 'test' | 'coverage'
+  stage: 'typecheck' | 'lint' | 'test'
 }
 
 export interface AgentResult {
