@@ -6,6 +6,7 @@ import { getIssue, createPR, addLabel, postComment } from './github.js'
 import { createAndCheckoutBranch, stageAll, commit, push } from './git.js'
 import { runCI, runAllChecks } from './ci.js'
 import { planFromIssue } from './planner.js'
+import { log } from './logger.js'
 import { TESTS_PROMPT } from './prompts/tests.js'
 import { IMPLEMENT_PROMPT } from './prompts/implement.js'
 import { PR_BODY_PROMPT } from './prompts/pr-body.js'
@@ -95,22 +96,21 @@ function allCIPassed(results: CIResult[]): boolean {
   return results.length > 0 && results.every((r) => r.passed)
 }
 
-export async function runAgent(
-  issueNumber: number,
-  config: ProjectConfig
-): Promise<AgentResult> {
-  // Step 1: Get issue
+export async function runAgent(issueNumber: number, config: ProjectConfig): Promise<AgentResult> {
+  log(`[#${issueNumber}] Fetching issue from ${config.repoOwner}/${config.repoName}`)
   const issue = await getIssue(config.repoOwner, config.repoName, issueNumber)
 
-  // Step 2: Build file tree
+  log(`[#${issueNumber}] Building file tree for ${config.localPath}`)
   const fileTree = buildFileTree(config.localPath)
 
-  // Step 3: Plan
+  log(`[#${issueNumber}] Planning with Claude`)
   const plan = await planFromIssue(issue, fileTree, config)
+  log(`[#${issueNumber}] Plan: ${plan.summary} — branch: ${plan.branchName}`)
 
-  // Step 4: Create branch
+  log(`[#${issueNumber}] Creating branch ${plan.branchName}`)
   await createAndCheckoutBranch(config.localPath, plan.branchName)
 
+  log(`[#${issueNumber}] Writing ${plan.testFiles.length} test file(s) (TDD red phase)`)
   // Step 5: TDD Red Phase — write failing tests
   for (const testFile of plan.testFiles) {
     const context = `\nProject file tree:\n${fileTree}\n\nIssue context:\n${issue.title}\n${issue.body}`
@@ -136,6 +136,9 @@ export async function runAgent(
     )
   }
 
+  log(
+    `[#${issueNumber}] Writing ${plan.implementationFiles.length} implementation file(s) (TDD green phase)`
+  )
   // Step 6: TDD Green Phase — implement code
   const testContents = await Promise.all(
     plan.testFiles.map(async (f) => {
@@ -149,7 +152,12 @@ export async function runAgent(
   const testContext = `Test files to make pass:\n${testContents.join('\n')}\n\nProject file tree:\n${fileTree}`
 
   for (const implFile of plan.implementationFiles) {
-    const content = await generateFileContent(implFile, IMPLEMENT_PROMPT, testContext, config.localPath)
+    const content = await generateFileContent(
+      implFile,
+      IMPLEMENT_PROMPT,
+      testContext,
+      config.localPath
+    )
     await writeFileWithDirs(join(config.localPath, implFile.path), content)
   }
 
@@ -157,11 +165,13 @@ export async function runAgent(
   const commitPrefix = issue.type === 'bug' ? 'fix' : 'feat'
   await commit(config.localPath, `${commitPrefix}(#${issueNumber}): ${plan.summary}`)
 
+  log(`[#${issueNumber}] Running CI checks`)
   // Step 7: CI Loop
   let ciAttempts = 0
   let ciResults = runAllChecks(config.localPath, config)
 
   while (!allCIPassed(ciResults) && ciAttempts < config.maxCIAttempts) {
+    log(`[#${issueNumber}] CI attempt ${ciAttempts + 1}/${config.maxCIAttempts} — fixing failures`)
     const failedResult = ciResults.find((r) => !r.passed)
     const failureOutput = failedResult?.output ?? 'Unknown CI failure'
 
@@ -173,15 +183,17 @@ export async function runAgent(
     ].join('\n')
 
     for (const implFile of plan.implementationFiles) {
-      const content = await generateFileContent(implFile, IMPLEMENT_PROMPT, fixContext, config.localPath)
+      const content = await generateFileContent(
+        implFile,
+        IMPLEMENT_PROMPT,
+        fixContext,
+        config.localPath
+      )
       await writeFileWithDirs(join(config.localPath, implFile.path), content)
     }
 
     await stageAll(config.localPath)
-    await commit(
-      config.localPath,
-      `fix: address CI failure (attempt ${ciAttempts + 1})`
-    )
+    await commit(config.localPath, `fix: address CI failure (attempt ${ciAttempts + 1})`)
 
     ciAttempts++
     ciResults = runAllChecks(config.localPath, config)
@@ -205,6 +217,7 @@ export async function runAgent(
     }
   }
 
+  log(`[#${issueNumber}] All CI checks passed — pushing branch ${plan.branchName}`)
   // Step 8: Push
   await push(config.localPath, plan.branchName)
 
@@ -222,6 +235,7 @@ export async function runAgent(
     config.baseBranch
   )
 
+  log(`[#${issueNumber}] PR created: ${prUrl}`)
   // Step 11: Label success
   await addLabel(config.repoOwner, config.repoName, issueNumber, 'agent-complete')
 
