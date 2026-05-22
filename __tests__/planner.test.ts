@@ -101,6 +101,21 @@ describe('planFromIssue', () => {
     )
   })
 
+  it('falls back to String() when the API rejects with a non-Error value', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockRejectedValue('quota exceeded'),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
+      /Claude API|failed to generate plan/i
+    )
+  })
+
   it('throws a descriptive error when the Claude API call itself fails', async () => {
     const Anthropic = (await import('@anthropic-ai/sdk')).default
     vi.mocked(Anthropic).mockImplementation(function () {
@@ -113,6 +128,59 @@ describe('planFromIssue', () => {
     const { planFromIssue } = await import('../src/planner')
     await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
       /Claude API|failed to generate plan/i
+    )
+  })
+
+  it('throws when Claude returns valid JSON but testFiles is empty', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  summary: 'test',
+                  issueType: 'feature',
+                  testFiles: [],
+                  implementationFiles: [{ path: 'src/x.ts', action: 'create', description: 'x' }],
+                }),
+              },
+            ],
+          }),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
+      /testFiles must be a non-empty array/i
+    )
+  })
+
+  it('throws when Claude returns valid JSON but implementationFiles is missing', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  summary: 'test',
+                  issueType: 'feature',
+                  testFiles: [{ path: 'x.test.ts', action: 'create', description: 'x' }],
+                }),
+              },
+            ],
+          }),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
+      /implementationFiles must be an array/i
     )
   })
 
