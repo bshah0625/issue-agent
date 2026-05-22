@@ -184,6 +184,23 @@ describe('planFromIssue', () => {
     )
   })
 
+  it('throws malformed JSON when Claude returns only non-text blocks', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [{ type: 'tool_use', id: 'x', name: 'y', input: {} }],
+          }),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
+      /malformed|invalid|JSON/i
+    )
+  })
+
   it('returns non-empty testFiles and implementationFiles arrays', async () => {
     const Anthropic = (await import('@anthropic-ai/sdk')).default
     const validPlanJson = JSON.stringify({

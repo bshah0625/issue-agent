@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'node:crypto'
 
 vi.mock('../src/agent.js', () => ({
@@ -270,5 +270,86 @@ describe('handleWebhook', () => {
     expect(runAgent).toHaveBeenCalledTimes(1)
 
     resolveAgent()
+  })
+})
+
+describe('startServer', () => {
+  const savedEnv: Record<string, string | undefined> = {}
+  let exitSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    savedEnv['GITHUB_TOKEN'] = process.env['GITHUB_TOKEN']
+    savedEnv['ANTHROPIC_API_KEY'] = process.env['ANTHROPIC_API_KEY']
+    savedEnv['GITHUB_WEBHOOK_SECRET'] = process.env['GITHUB_WEBHOOK_SECRET']
+    vi.clearAllMocks()
+    vi.resetModules()
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code?: string | number | null) => {
+      throw new Error(`process.exit(${_code})`)
+    })
+  })
+
+  afterEach(() => {
+    exitSpy.mockRestore()
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = val
+      }
+    }
+  })
+
+  function spyListen(
+    server: import('node:http').Server,
+    invokeCallback: boolean
+  ): ReturnType<typeof vi.spyOn> {
+    return vi.spyOn(server, 'listen').mockImplementation(function (...args: unknown[]) {
+      if (invokeCallback) {
+        const cb = args.find((a) => typeof a === 'function') as (() => void) | undefined
+        cb?.()
+      }
+      return server as never
+    } as never)
+  }
+
+  it('calls server.listen with the specified port', async () => {
+    const { startServer, server } = await import('../src/webhook')
+    const listenSpy = spyListen(server, false)
+
+    startServer(4567)
+
+    expect(listenSpy).toHaveBeenCalledWith(4567, expect.any(Function))
+  })
+
+  it('does not call process.exit when all required env vars are set', async () => {
+    const { startServer, server } = await import('../src/webhook')
+    spyListen(server, true)
+
+    expect(() => startServer(3000)).not.toThrow()
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it('exits with code 1 when GITHUB_TOKEN is missing', async () => {
+    delete process.env['GITHUB_TOKEN']
+    const { startServer, server } = await import('../src/webhook')
+    spyListen(server, true)
+
+    expect(() => startServer(3000)).toThrow(/process\.exit\(1\)/)
+  })
+
+  it('exits with code 1 when ANTHROPIC_API_KEY is missing', async () => {
+    delete process.env['ANTHROPIC_API_KEY']
+    const { startServer, server } = await import('../src/webhook')
+    spyListen(server, true)
+
+    expect(() => startServer(3000)).toThrow(/process\.exit\(1\)/)
+  })
+
+  it('exits with code 1 when GITHUB_WEBHOOK_SECRET is missing', async () => {
+    delete process.env['GITHUB_WEBHOOK_SECRET']
+    const { startServer, server } = await import('../src/webhook')
+    spyListen(server, true)
+
+    expect(() => startServer(3000)).toThrow(/process\.exit\(1\)/)
   })
 })
