@@ -419,6 +419,68 @@ describe('runAgent', () => {
     )
   })
 
+  it('throws a descriptive error when the Claude API fails during file generation', async () => {
+    await setupMocks()
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockRejectedValue(new Error('Rate limit exceeded')),
+        },
+      } as never
+    })
+    const { runAgent } = await import('../src/agent')
+    await expect(runAgent(42, mockConfig)).rejects.toThrow(/Claude API|failed/i)
+  })
+
+  it('appends Closes #N to the PR body when Claude omits it', async () => {
+    await setupMocks()
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [{ type: 'text', text: '## What\n\nAdds chart\n\n## Why\n\nUsers need it' }],
+          }),
+        },
+      } as never
+    })
+    const github = await import('../src/github')
+    const { runAgent } = await import('../src/agent')
+
+    await runAgent(42, mockConfig)
+
+    const prBody = vi.mocked(github.createPR).mock.calls[0]?.[3]
+    expect(prBody).toContain('Closes #42')
+  })
+
+  it('does not duplicate Closes #N when Claude already includes it', async () => {
+    await setupMocks()
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [
+              {
+                type: 'text',
+                text: '## What\n\nAdds chart\n\nCloses #42',
+              },
+            ],
+          }),
+        },
+      } as never
+    })
+    const github = await import('../src/github')
+    const { runAgent } = await import('../src/agent')
+
+    await runAgent(42, mockConfig)
+
+    const prBody = vi.mocked(github.createPR).mock.calls[0]?.[3] ?? ''
+    const occurrences = (prBody.match(/Closes #42/g) ?? []).length
+    expect(occurrences).toBe(1)
+  })
+
   it('continues successfully when Claude returns no text content block', async () => {
     await setupMocks()
 
