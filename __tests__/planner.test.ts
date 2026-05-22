@@ -201,6 +201,29 @@ describe('planFromIssue', () => {
     )
   })
 
+  it('parses the plan when Claude wraps the JSON in a markdown code fence', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const planJson = JSON.stringify({
+      summary: 'Add MPG chart',
+      issueType: 'feature',
+      testFiles: [{ path: '__tests__/chart.test.ts', action: 'create', description: 'tests' }],
+      implementationFiles: [{ path: 'src/chart.ts', action: 'create', description: 'impl' }],
+    })
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [{ type: 'text', text: `\`\`\`json\n${planJson}\n\`\`\`` }],
+          }),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    const plan = await planFromIssue(makeIssue(), '', mockProjectConfig)
+    expect(plan.testFiles.length).toBeGreaterThan(0)
+    expect(plan.summary).toBe('Add MPG chart')
+  })
+
   it('returns non-empty testFiles and implementationFiles arrays', async () => {
     const Anthropic = (await import('@anthropic-ai/sdk')).default
     const validPlanJson = JSON.stringify({

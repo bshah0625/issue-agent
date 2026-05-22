@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGitInstance = {
   checkoutLocalBranch: vi.fn(),
+  checkout: vi.fn(),
   add: vi.fn(),
   commit: vi.fn(),
   push: vi.fn(),
@@ -175,17 +176,30 @@ describe('checkoutAndPull', () => {
   })
 
   it('checks out the branch then pulls latest changes', async () => {
-    mockGitInstance.status.mockResolvedValue({ current: 'main' })
+    mockGitInstance.checkout.mockResolvedValue(undefined)
     mockGitInstance.pull.mockResolvedValue(undefined)
 
     const { checkoutAndPull } = await import('../src/git')
     await checkoutAndPull('/tmp/test-repo', 'main')
 
+    expect(mockGitInstance.checkout).toHaveBeenCalledWith('main')
     expect(mockGitInstance.pull).toHaveBeenCalled()
   })
 
+  it('checkout happens before pull', async () => {
+    mockGitInstance.checkout.mockResolvedValue(undefined)
+    mockGitInstance.pull.mockResolvedValue(undefined)
+
+    const { checkoutAndPull } = await import('../src/git')
+    await checkoutAndPull('/tmp/test-repo', 'main')
+
+    const checkoutOrder = mockGitInstance.checkout.mock.invocationCallOrder[0] ?? 0
+    const pullOrder = mockGitInstance.pull.mock.invocationCallOrder[0] ?? 0
+    expect(checkoutOrder).toBeLessThan(pullOrder)
+  })
+
   it('throws a descriptive error when the branch does not exist', async () => {
-    mockGitInstance.status.mockRejectedValue(new Error("pathspec 'nonexistent' did not match"))
+    mockGitInstance.checkout.mockRejectedValue(new Error("pathspec 'nonexistent' did not match"))
 
     const { checkoutAndPull } = await import('../src/git')
     await expect(checkoutAndPull('/tmp/test-repo', 'nonexistent')).rejects.toThrow(
@@ -194,7 +208,7 @@ describe('checkoutAndPull', () => {
   })
 
   it('falls back to String(err) when a non-Error value is thrown', async () => {
-    mockGitInstance.status.mockRejectedValue('network timeout')
+    mockGitInstance.checkout.mockRejectedValue('network timeout')
 
     const { checkoutAndPull } = await import('../src/git')
     await expect(checkoutAndPull('/tmp/test-repo', 'main')).rejects.toThrow('network timeout')

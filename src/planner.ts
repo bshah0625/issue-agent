@@ -44,7 +44,7 @@ export async function planFromIssue(
   let response: Awaited<ReturnType<typeof client.messages.create>>
   try {
     response = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: PLAN_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -63,12 +63,17 @@ export async function planFromIssue(
     }
   }
 
+  const stripped = rawText
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim()
+
   let parsed: ClaudePlanResponse
   try {
-    parsed = JSON.parse(rawText) as ClaudePlanResponse
+    parsed = JSON.parse(stripped) as ClaudePlanResponse
   } catch {
     throw new Error(
-      `Claude returned malformed JSON that could not be parsed as a valid plan. Raw response: ${rawText.slice(0, 200)}`
+      `Claude returned malformed JSON that could not be parsed as a valid plan. Raw response: ${stripped.slice(0, 200)}`
     )
   }
 

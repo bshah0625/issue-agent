@@ -52,7 +52,7 @@ export async function getHeadSha(localPath: string): Promise<string> {
 export async function checkoutAndPull(localPath: string, branch: string): Promise<void> {
   try {
     const git = simpleGit(localPath)
-    await git.status()
+    await git.checkout(branch)
     await git.pull('origin', branch)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
