@@ -2,10 +2,10 @@ import type { ProjectConfig } from '../src/types.js'
 
 export const projects: Record<string, ProjectConfig> = {
   carma: {
-    repoOwner: 'YOUR_GITHUB_USERNAME',
+    repoOwner: 'bshah0625',
     repoName: 'carma',
     baseBranch: 'main',
-    localPath: '/absolute/path/to/local/carma',
+    localPath: 'C:\\Users\\BMW Coder\\Documents\\projects\\carma',
     ciCommands: {
       typecheck: 'npx tsc --noEmit',
       lint: 'npx eslint . --ext .ts,.tsx',
