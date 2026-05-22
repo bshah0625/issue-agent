@@ -68,6 +68,18 @@ describe('getIssue', () => {
     expect(typeof issue.labels[0]).toBe('string')
   })
 
+  it('coerces a null body to an empty string', async () => {
+    mockOctokit.rest.issues.get.mockResolvedValue({
+      data: { number: 5, title: 'No description', body: null, labels: [] },
+    })
+
+    const { getIssue } = await import('../src/github')
+    const issue = await getIssue('owner', 'repo', 5)
+
+    expect(issue.body).toBe('')
+    expect(typeof issue.body).toBe('string')
+  })
+
   it('throws a descriptive error on a 404 response', async () => {
     mockOctokit.rest.issues.get.mockRejectedValue(
       Object.assign(new Error('Not Found'), { status: 404 })
@@ -264,9 +276,9 @@ describe('createPR', () => {
     )
 
     const { createPR } = await import('../src/github')
-    await expect(
-      createPR('owner', 'repo', 'title', 'body', 'head', 'base')
-    ).rejects.toThrow(/422|unprocessable|pull request/i)
+    await expect(createPR('owner', 'repo', 'title', 'body', 'head', 'base')).rejects.toThrow(
+      /422|unprocessable|pull request/i
+    )
   })
 })
 
