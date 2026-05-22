@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/webhook.ts",
-    "agent": "tsx src/agent.ts",
+    "agent": "tsx src/cli.ts",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",

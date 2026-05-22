@@ -1,11 +1,9 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { projects } from '../config/projects.js'
 import { runAgent } from './agent.js'
-
-function log(message: string): void {
-  process.stdout.write(`[${new Date().toISOString()}] ${message}\n`)
-}
+import { log, logError } from './logger.js'
 
 function jsonResponse(res: ServerResponse, status: number, body: Record<string, string>): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -30,7 +28,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   })
 }
 
-const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+export async function handleWebhook(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const event = req.headers['x-github-event'] as string | undefined
 
   log(`${req.method} ${req.url} event=${event ?? 'none'}`)
@@ -44,7 +42,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   const secret = process.env['GITHUB_WEBHOOK_SECRET'] ?? ''
 
   if (!signature || !validateHmac(secret, body, signature)) {
-    log('HMAC validation failed')
+    logError('HMAC validation failed')
     return jsonResponse(res, 403, { status: 'forbidden' })
   }
 
@@ -79,24 +77,29 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 
   // Fire and forget — 202 must be sent before agent begins work
   void runAgent(issueNumber, projectConfig).catch((err: unknown) => {
-    log(`Agent error for issue #${issueNumber}: ${String(err)}`)
+    logError(`Agent error for issue #${issueNumber}: ${String(err)}`)
   })
 
   return jsonResponse(res, 202, { status: 'accepted' })
-})
+}
 
-const PORT = parseInt(process.env['PORT'] ?? '3000', 10)
+export const server = createServer(handleWebhook)
 
-server.listen(PORT, () => {
-  log(`Webhook server listening on port ${PORT}`)
+export function startServer(port: number): void {
+  server.listen(port, () => {
+    log(`Webhook server listening on port ${port}`)
 
-  const requiredEnv = ['GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'GITHUB_WEBHOOK_SECRET']
-  for (const key of requiredEnv) {
-    if (!process.env[key]) {
-      log(`ERROR: Missing required environment variable: ${key}`)
-      process.exit(1)
+    const requiredEnv = ['GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'GITHUB_WEBHOOK_SECRET']
+    for (const key of requiredEnv) {
+      if (!process.env[key]) {
+        logError(`Missing required environment variable: ${key}`)
+        process.exit(1)
+      }
     }
-  }
-})
+  })
+}
 
-export { server }
+// Only start server when run directly (not when imported by tests)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer(parseInt(process.env['PORT'] ?? '3000', 10))
+}
