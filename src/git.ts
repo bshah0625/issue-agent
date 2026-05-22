@@ -48,3 +48,14 @@ export async function getHeadSha(localPath: string): Promise<string> {
   const git = simpleGit(localPath)
   return git.revparse(['HEAD'])
 }
+
+export async function checkoutAndPull(localPath: string, branch: string): Promise<void> {
+  try {
+    const git = simpleGit(localPath)
+    await git.status()
+    await git.pull('origin', branch)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to checkout and pull branch '${branch}': ${message}`)
+  }
+}
