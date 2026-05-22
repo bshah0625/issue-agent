@@ -76,7 +76,8 @@ describe('planFromIssue', () => {
   it('branch name slug is truncated to 40 characters max', async () => {
     const { planFromIssue } = await import('../src/planner')
     const issue = makeIssue({
-      title: 'This is an extremely long title that should definitely be truncated because it exceeds forty characters',
+      title:
+        'This is an extremely long title that should definitely be truncated because it exceeds forty characters',
     })
     const plan = await planFromIssue(issue, '', mockProjectConfig)
     const slug = plan.branchName.split('/').slice(1).join('/')
@@ -97,6 +98,21 @@ describe('planFromIssue', () => {
     const { planFromIssue } = await import('../src/planner')
     await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
       /malformed|invalid|JSON/i
+    )
+  })
+
+  it('throws a descriptive error when the Claude API call itself fails', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    vi.mocked(Anthropic).mockImplementation(function () {
+      return {
+        messages: {
+          create: vi.fn().mockRejectedValue(new Error('Rate limit exceeded')),
+        },
+      } as never
+    })
+    const { planFromIssue } = await import('../src/planner')
+    await expect(planFromIssue(makeIssue(), '', mockProjectConfig)).rejects.toThrow(
+      /Claude API|failed to generate plan/i
     )
   })
 
