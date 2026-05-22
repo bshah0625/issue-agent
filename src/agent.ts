@@ -36,7 +36,7 @@ async function callClaude(systemPrompt: string, userMessage: string): Promise<st
   let response: Awaited<ReturnType<typeof client.messages.create>>
   try {
     response = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
